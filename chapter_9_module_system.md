@@ -1,252 +1,479 @@
 # 第九章 - 專案組織與模組系統
 
-隨著程式碼規模的增長，將所有程式碼都放在單一檔案中會變得難以維護。Rust 提供了強大的模組系統，讓我們能夠將程式碼組織成更小、更易於理解的單元。本章將介紹如何有效地組織 Rust 專案。
+Rust 的模組系統是組織程式碼的核心機制，提供命名空間、封裝性和程式碼重用功能。
 
-## 1. 套件 (Packages) 與 Crates
+## 1. 基本概念
 
-### 基本概念
-- **Crate**：Rust 的編譯單元，可以編譯成二進位檔或函式庫
-- **Package**：包含一個或多個 Crate 的套件，由 `Cargo.toml` 定義
+### 模組定義與可見性
 
-### 建立新專案
-```bash
-# 建立函式庫專案
-cargo new my_library --lib
-
-# 建立二進位專案
-cargo new my_binary
-```
-
-## 2. 模組基礎
-
-### 定義模組
 ```rust
-mod front_of_house {
-    pub mod hosting {
-        pub fn add_to_waitlist() {
-            println!("Added to waitlist!");
-        }
-    }
+mod math {
+  pub fn add(a: i32, b: i32) -> i32 {
+      a + b
+  }
+  
+  // 私有函數，外部無法存取
+  fn internal_calculation() -> i32 {
+      42
+  }
 }
-```
-
-### 模組可見性
-- `pub`：公開項目
-- `pub(crate)`：僅在當前 crate 內可見
-- `pub(super)`：僅在父模組中可見
-
-## 3. 路徑與 use 語句
-
-### 絕對路徑與相對路徑
-```rust
-// 絕對路徑
-crate::front_of_house::hosting::add_to_waitlist();
-
-// 相對路徑
-front_of_house::hosting::add_to_waitlist();
-```
-
-### 使用 use 引入作用域
-```rust
-use crate::front_of_house::hosting;
 
 fn main() {
-    hosting::add_to_waitlist();
+  let result = math::add(5, 3);
+  println!("5 + 3 = {}", result);
 }
 ```
 
-## 4. 將模組拆分到不同檔案
+### 結構體的可見性控制
 
-### 目錄結構
-```
-my_project/
-├── Cargo.toml
-└── src/
-    ├── main.rs
-    ├── lib.rs
-    └── front_of_house/
-        ├── mod.rs
-        └── hosting.rs
-```
-
-### 檔案內容範例
-**src/front_of_house/mod.rs**
 ```rust
-pub mod hosting;
-```
+mod library {
+  pub struct Book {
+      pub title: String,
+      pub author: String,
+      isbn: String, // 私有欄位
+  }
+  
+  impl Book {
+      pub fn new(title: &str, author: &str, isbn: &str) -> Book {
+          Book {
+              title: title.to_string(),
+              author: author.to_string(),
+              isbn: isbn.to_string(),
+          }
+      }
+      
+      pub fn display_info(&self) {
+          println!("《{}》 by {}", self.title, self.author);
+      }
+  }
+}
 
-**src/front_of_house/hosting.rs**
-```rust
-pub fn add_to_waitlist() {
-    println!("Added to waitlist!");
+fn main() {
+  let book = library::Book::new("Rust程式設計", "作者", "123456789");
+  book.display_info();
+  println!("書名: {}", book.title); // 可存取公開欄位
+  // println!("ISBN: {}", book.isbn); // 編譯錯誤：私有欄位
 }
 ```
 
-## 5. 常用慣例
-
-### 函式庫與二進位 Crate
-- 將主要邏輯放在 `src/lib.rs`
-- 將二進位入口點放在 `src/main.rs`
-- 使用 `use crate_name::module_name` 引入模組
-
-### 測試組織
-- 單元測試寫在原始碼檔案中
-- 整合測試放在 `tests/` 目錄下
-
-## 6. 練習題
-
-1. 建立一個名為 `shapes` 的函式庫，實現計算不同形狀面積和周長的功能。將每種形狀放在獨立的模組中。
-
-2. 建立一個名為 `school` 的專案，包含以下模組：
-   - `student`：學生相關功能
-   - `teacher`：教師相關功能
-   - `course`：課程管理
-   - `grade`：成績管理
-
-3. 解釋 `pub use` 的用途，並提供一個實際應用場景。
-
-## 7. 進階模組組織方法
-
-### 7.1 條件式編譯與功能旗標
-
-使用 `#[cfg]` 屬性根據不同的編譯條件包含或排除模組：
+### 巢狀模組
 
 ```rust
-#[cfg(feature = "network")]
 mod network {
-    pub fn connect() { /* ... */ }
+  pub mod client {
+      pub fn connect() {
+          println!("連接到伺服器");
+      }
+      
+      pub mod http {
+          pub fn get(url: &str) {
+              println!("GET {}", url);
+          }
+      }
+  }
+  
+  pub mod server {
+      pub fn start() {
+          println!("啟動伺服器");
+      }
+  }
 }
 
+fn main() {
+  network::client::connect();
+  network::client::http::get("https://example.com");
+  network::server::start();
+}
+```
+
+## 2. `use` 關鍵字
+
+### 基本用法
+
+```rust
+mod math {
+  pub fn add(a: i32, b: i32) -> i32 { a + b }
+  pub fn multiply(a: i32, b: i32) -> i32 { a * b }
+  
+  pub mod advanced {
+      pub fn power(base: i32, exp: u32) -> i32 {
+          base.pow(exp)
+      }
+  }
+}
+
+// 引入特定函數
+use math::add;
+use math::advanced::power;
+
+fn main() {
+  println!("2 + 3 = {}", add(2, 3));
+  println!("2^3 = {}", power(2, 3));
+  println!("4 * 5 = {}", math::multiply(4, 5)); // 完整路徑
+}
+```
+
+### 重新命名與批量引入
+
+```rust
+mod graphics {
+  pub mod shapes {
+      pub fn draw_circle() { println!("畫圓形"); }
+  }
+  
+  pub mod colors {
+      pub fn draw_circle() { println!("畫彩色圓形"); }
+  }
+}
+
+// 重新命名
+use graphics::shapes::draw_circle as draw_shape_circle;
+use graphics::colors::draw_circle as draw_color_circle;
+
+// 巢狀引入
+use graphics::{
+  shapes::draw_circle,
+  colors,
+};
+
+fn main() {
+  draw_shape_circle();
+  draw_color_circle();
+  colors::draw_circle();
+}
+```
+
+## 3. 檔案系統中的模組
+
+### 基本檔案結構
+
+```
+src/
+├── main.rs
+├── math.rs
+└── network/
+  ├── mod.rs
+  ├── client.rs
+  └── server.rs
+```
+
+**src/math.rs**
+```rust
+pub fn add(a: i32, b: i32) -> i32 {
+  a + b
+}
+
+pub fn multiply(a: i32, b: i32) -> i32 {
+  a * b
+}
+```
+
+**src/main.rs**
+```rust
+mod math; // 宣告模組，自動尋找 math.rs
+
+fn main() {
+  println!("2 + 3 = {}", math::add(2, 3));
+  println!("4 * 6 = {}", math::multiply(4, 6));
+}
+```
+
+### 目錄模組
+
+**src/network/mod.rs**
+```rust
+pub mod client;
+pub mod server;
+
+pub fn initialize() {
+  println!("初始化網路模組");
+}
+```
+
+**src/network/client.rs**
+```rust
+pub fn connect(address: &str) {
+  println!("連接到 {}", address);
+}
+```
+
+**src/main.rs**
+```rust
+mod network;
+
+use network::{client, server};
+
+fn main() {
+  network::initialize();
+  client::connect("127.0.0.1:8080");
+}
+```
+
+### 現代檔案結構（Rust 2018+）
+
+```
+src/
+├── main.rs
+├── network.rs      // 取代 network/mod.rs
+└── network/
+  ├── client.rs
+  └── server.rs
+```
+
+## 4. 路徑和作用域
+
+### 絕對路徑與相對路徑
+
+```rust
+mod restaurant {
+  pub mod hosting {
+      pub fn add_to_waitlist() {
+          println!("加入等候名單");
+      }
+  }
+}
+
+pub fn eat_at_restaurant() {
+  // 絕對路徑
+  crate::restaurant::hosting::add_to_waitlist();
+  
+  // 相對路徑
+  restaurant::hosting::add_to_waitlist();
+  
+  // 使用 use 簡化
+  use restaurant::hosting;
+  hosting::add_to_waitlist();
+}
+```
+
+### super 和 self
+
+```rust
+mod parent {
+  fn parent_function() {
+      println!("父模組函數");
+  }
+  
+  pub mod child {
+      pub fn child_function() {
+          // 使用 super 存取父模組
+          super::parent_function();
+      }
+      
+      pub fn self_demo() {
+          // 使用 self 明確指示當前模組
+          self::child_function();
+      }
+  }
+}
+
+fn main() {
+  parent::child::child_function();
+  parent::child::self_demo();
+}
+```
+
+## 5. Crate 和重新匯出
+
+### 函式庫 Crate
+
+**src/lib.rs**
+```rust
+pub mod math;
+pub mod string_utils;
+
+// 重新匯出常用項目
+pub use math::{add, subtract};
+pub use string_utils::capitalize;
+
+/// 函式庫的主要功能
+pub fn library_function() {
+  println!("這是函式庫的主要功能");
+}
+
+// 建立 prelude 模組
+pub mod prelude {
+  pub use crate::{add, subtract, capitalize};
+}
+```
+
+### pub use 重新匯出
+
+```rust
+mod internal {
+  pub mod deeply {
+      pub mod nested {
+          pub fn important_function() {
+              println!("重要功能");
+          }
+      }
+  }
+}
+
+// 重新匯出，提供簡潔的 API
+pub use internal::deeply::nested::important_function;
+pub use internal::deeply::nested::important_function as main_feature;
+
+fn main() {
+  important_function(); // 簡潔的存取方式
+  main_feature();
+}
+```
+
+## 6. 實際專案範例
+
+### Web 應用程式結構
+
+```
+src/
+├── main.rs
+├── lib.rs
+├── handlers/
+│   ├── mod.rs
+│   ├── user.rs
+│   └── auth.rs
+├── models/
+│   ├── mod.rs
+│   └── user.rs
+└── services/
+  ├── mod.rs
+  └── user_service.rs
+```
+
+**src/lib.rs**
+```rust
+pub mod handlers;
+pub mod models;
+pub mod services;
+
+// 重新匯出常用項目
+pub use models::User;
+
+// 建立 prelude 模組
+pub mod prelude {
+  pub use crate::models::*;
+  pub use crate::services::*;
+}
+```
+
+**src/models/mod.rs**
+```rust
+pub mod user;
+pub use user::User;
+```
+
+**src/models/user.rs**
+```rust
+#[derive(Debug)]
+pub struct User {
+  pub id: u32,
+  pub username: String,
+  pub email: String,
+}
+
+impl User {
+  pub fn new(id: u32, username: String, email: String) -> Self {
+      User { id, username, email }
+  }
+}
+```
+
+## 7. 條件編譯
+
+```rust
+// 測試模組
 #[cfg(test)]
 mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_connect() {
-        // 測試程式碼
-    }
+  use super::*;
+  
+  #[test]
+  fn test_something() {
+      assert_eq!(2 + 2, 4);
+  }
+}
+
+// 平台特定程式碼
+#[cfg(target_os = "windows")]
+mod windows_specific {
+  pub fn platform_function() {
+      println!("Windows 特定功能");
+  }
+}
+
+#[cfg(target_os = "linux")]
+mod linux_specific {
+  pub fn platform_function() {
+      println!("Linux 特定功能");
+  }
+}
+
+// 功能特性
+#[cfg(feature = "advanced")]
+mod advanced_features {
+  pub fn advanced_function() {
+      println!("進階功能");
+  }
 }
 ```
 
-在 `Cargo.toml` 中定義功能旗標：
+## 8. 最佳實踐
 
-```toml
-[features]
-default = []
-network = []
-```
+### 模組組織原則
 
-### 7.2 使用 `pub use` 重新匯出
-
-重新匯出可以創建更簡潔的公共 API：
+1. **按功能分組**：相關功能放在同一模組
+2. **控制可見性**：只公開必要的項目
+3. **使用 prelude**：為常用項目建立 prelude
+4. **重新匯出**：提供簡潔的 API
 
 ```rust
-// src/lib.rs
-pub mod network;
-pub mod client;
+// 好的模組組織
+mod user_management {
+  mod user;
+  mod authentication;
+  
+  // 只公開必要的介面
+  pub use user::User;
+  pub use authentication::{login, logout};
+}
 
-// 重新匯出，讓使用者可以直接使用 crate::Client
-pub use client::Client;
-
-// src/client.rs
-pub struct Client { /* ... */ }
-```
-
-### 7.3 工作區 (Workspaces)
-
-對於大型專案，可以使用工作區管理多個相關的套件：
-
-```toml
-# Cargo.toml
-[workspace]
-members = [
-    "crates/core",
-    "crates/utils",
-    "examples/simple"
-]
-```
-
-### 7.4 模組可見性設計模式
-
-#### 私有模組的公共類型
-
-```rust
-mod network {
-    // 模組私有，但類型公開
-    pub struct NetworkConfig {
-        pub timeout: u32,
-        retry_count: u32,  // 私有欄位
-    }
-    
-    impl NetworkConfig {
-        // 公開建構函數
-        pub fn new(timeout: u32) -> Self {
-            NetworkConfig { timeout, retry_count: 3 }
-        }
-    }
+// 建立 prelude
+pub mod prelude {
+  pub use crate::user_management::*;
 }
 ```
 
-#### 模組前向兼容性
+### 命名慣例
 
-使用私有模組實現細節，公開穩定接口：
+- **模組名稱**：使用 snake_case
+- **檔案名稱**：與模組名稱一致
+- **重新匯出**：使用清楚的名稱
 
-```rust
-// 公開穩定的 API
-pub fn process_data(input: &str) -> String {
-    internal::process(input)
-}
+## 9. 總結
 
-// 私有實現細節
-mod internal {
-    pub(super) fn process(input: &str) -> String {
-        // 實現細節可以隨意更改
-        input.to_uppercase()
-    }
-}
-```
+### 核心概念
 
-### 7.5 測試組織策略
+1. **`mod`**：定義模組
+2. **`pub`**：控制可見性
+3. **`use`**：引入項目
+4. **`crate`、`super`、`self`**：路徑導航
+5. **`pub use`**：重新匯出
 
-#### 整合測試
+### 選擇指南
 
-```
-tests/
-├── common/
-│   └── mod.rs     # 測試輔助函數
-├── integration_test.rs
-└── another_test.rs
-```
+| 需求 | 使用方式 | 說明 |
+|------|---------|------|
+| 組織相關功能 | `mod` | 建立模組 |
+| 公開 API | `pub` | 控制可見性 |
+| 簡化存取 | `use` | 引入常用項目 |
+| 簡化 API | `pub use` | 重新匯出 |
+| 大型專案 | 檔案模組 | 分離到不同檔案 |
 
-#### 文件測試 (Doc-tests)
+### 注意事項
 
-```rust
-/// 計算兩個數字的和
-///
-/// # 範例
-/// ```
-/// let result = my_crate::add(2, 2);
-/// assert_eq!(result, 4);
-/// ```
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-```
+- 預設所有項目都是私有的
+- 使用 `pub` 明確公開必要的項目
+- 善用重新匯出建立清晰的 API
+- 為大型專案建立 prelude 模組
 
-## 總結
-
-- 使用 `mod` 關鍵字定義模組
-- 使用 `pub` 控制可見性
-- 使用 `use` 簡化路徑
-- 將大型模組拆分到不同檔案
-- 遵循 Rust 的模組慣例，保持程式碼整潔有序
-
-掌握這些概念後，您將能夠：
-
-1. 設計出模組化、可維護的程式碼結構
-2. 使用進階模組特性來組織大型專案
-3. 實現清晰的公共 API 和封裝細節
-4. 有效管理測試和文件
-5. 處理複雜的專案依賴關係
-
-這些技巧將幫助您建立專業級的 Rust 專案，無論是小型工具還是大型應用程式。
+掌握模組系統將幫助你建立可維護、可擴展的 Rust 專案。
