@@ -1,297 +1,171 @@
 # 第八章 - 智慧指標 (Smart Pointers)
 
-智慧指標是具有額外元資料和功能的指標，在 Rust 中用於實現複雜的記憶體管理模式。本章介紹五個核心智慧指標：`Box<T>`、`Deref` Trait、`Drop` Trait、`Rc<T>` 和 `RefCell<T>`。
+智慧指標是 Rust 中一個核心概念，它們不僅能存儲記憶體地址，還提供額外的功能和元資料。對於有其他程式語言經驗的開發者來說，智慧指標是理解 Rust 所有權系統的關鍵。
+
+在傳統語言中，指標就是記憶體地址。但在 Rust 中，智慧指標是一種資料結構，除了包含記憶體地址外，還有額外的元資料和功能。它們通常實作了 `Deref` 和 `Drop` trait。
+
+**與其他語言的對比：**
+- **C/C++**：需要手動管理記憶體（malloc/free, new/delete）
+- **Java/C#**：有垃圾回收器自動管理
+- **Rust**：使用智慧指標在編譯時確保記憶體安全
 
 ## 1. `Box<T>` - 堆記憶體分配
 
-### 核心概念
+### 基本概念
 
-- `Box<T>` 將資料儲存在堆上而非棧上
-- 提供單一所有權的堆分配
-- 主要用於遞迴型別和大型資料結構
+`Box<T>` 是最簡單的智慧指標，用於將資料存儲在堆上而不是棧上。
+
+```rust
+fn main() {
+  // 在棧上存儲
+  let stack_value = 5;
+  
+  // 在堆上存儲
+  let heap_value = Box::new(5);
+  
+  println!("棧上的值: {}", stack_value);
+  println!("堆上的值: {}", *heap_value); // 使用 * 解引用
+}
+```
 
 ### 使用場景
 
-- 編譯時大小未知的型別
-- 大量資料避免棧溢出
-- 遞迴資料結構（鏈表、樹）
-- Trait 物件
-
-### 基本語法
-
+**1. 大型資料結構**
 ```rust
-fn main() {
-    // 基本用法
-    let b = Box::new(5);
-    println!("b = {}", *b);
-
-    // 遞迴型別 - 鏈表
-    #[derive(Debug)]
-    enum List {
-        Cons(i32, Box<List>),
-        Nil,
-    }
-
-    use List::{Cons, Nil};
-    let list = Cons(1, Box::new(Cons(2, Box::new(Cons(3, Box::new(Nil))))));
-    println!("{:?}", list);
-
-    // Trait 物件
-    trait Draw {
-        fn draw(&self);
-    }
-
-    struct Button;
-    impl Draw for Button {
-        fn draw(&self) {
-            println!("Drawing button");
-        }
-    }
-
-    let button: Box<dyn Draw> = Box::new(Button);
-    button.draw();
-}
-```
-
-## 2. `Deref` Trait - 自訂解引用
-
-### 核心概念
-
-- 允許自訂 `*` 運算子的行為
-- 實現 Deref 強制轉換 (Deref Coercion)
-- 讓智慧指標像普通引用一樣使用
-
-### Deref 強制轉換
-
-```rust
-use std::ops::Deref;
-
-struct MyBox<T>(T);
-
-impl<T> MyBox<T> {
-    fn new(x: T) -> MyBox<T> {
-        MyBox(x)
-    }
-}
-
-impl<T> Deref for MyBox<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-fn hello(name: &str) {
-    println!("Hello, {}!", name);
+struct LargeData {
+  data: [i32; 1000000], // 很大的陣列
 }
 
 fn main() {
-    let m = MyBox::new(String::from("Rust"));
-    
-    // Deref 強制轉換：&MyBox<String> -> &String -> &str
-    hello(&m);
-    
-    // 手動解引用
-    println!("Value: {}", *m);
+  // 避免棧溢出
+  let large = Box::new(LargeData {
+      data: [0; 1000000],
+  });
+  println!("資料已分配到堆上");
 }
 ```
 
-### DerefMut Trait
-
+**2. 遞迴資料結構**
 ```rust
-use std::ops::{Deref, DerefMut};
-
-struct MyVec<T> {
-    data: Vec<T>,
-}
-
-impl<T> MyVec<T> {
-    fn new() -> Self {
-        MyVec { data: Vec::new() }
-    }
-}
-
-impl<T> Deref for MyVec<T> {
-    type Target = Vec<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> DerefMut for MyVec<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-fn main() {
-    let mut v = MyVec::new();
-    v.push(1); // 透過 DerefMut 使用 Vec 的方法
-    println!("Length: {}", v.len());
-}
-```
-
-## 3. `Drop` Trait - 自動清理
-
-### 核心概念
-
-- 定義值離開作用域時的清理行為
-- 自動呼叫，確保資源釋放
-- 實現 RAII (Resource Acquisition Is Initialization) 模式
-
-### 基本語法
-
-```rust
-struct FileHandler {
-    filename: String,
-}
-
-impl FileHandler {
-    fn new(filename: &str) -> Self {
-        println!("Opening file: {}", filename);
-        FileHandler {
-            filename: filename.to_string(),
-        }
-    }
-}
-
-impl Drop for FileHandler {
-    fn drop(&mut self) {
-        println!("Closing file: {}", self.filename);
-    }
-}
-
-fn main() {
-    let _file1 = FileHandler::new("config.txt");
-    
-    {
-        let _file2 = FileHandler::new("data.txt");
-        // file2 在此處被 drop
-    }
-    
-    // 使用 std::mem::drop 提前釋放
-    let file3 = FileHandler::new("temp.txt");
-    std::mem::drop(file3);
-    println!("File3 已被手動釋放");
-    
-    // file1 在 main 結束時被 drop
-}
-```
-
-### 實際應用 - 資源管理
-
-```rust
-use std::sync::Mutex;
-
-struct DatabaseConnection {
-    id: u32,
-}
-
-impl DatabaseConnection {
-    fn new(id: u32) -> Self {
-        println!("建立資料庫連線 {}", id);
-        DatabaseConnection { id }
-    }
-
-    fn execute_query(&self, query: &str) {
-        println!("連線 {} 執行查詢: {}", self.id, query);
-    }
-}
-
-impl Drop for DatabaseConnection {
-    fn drop(&mut self) {
-        println!("關閉資料庫連線 {}", self.id);
-    }
-}
-
-fn main() {
-    let conn = DatabaseConnection::new(1);
-    conn.execute_query("SELECT * FROM users");
-    // 連線在此自動關閉
-}
-```
-
-## 4. `Rc<T>` - 多所有權引用計數
-
-### 核心概念
-
-- 允許多個所有者共享同一份資料
-- 使用引用計數追蹤所有者數量
-- 僅適用於單執行緒環境
-
-### 基本語法
-
-```rust
-use std::rc::Rc;
-
+// 鏈表節點
 #[derive(Debug)]
 enum List {
-    Cons(i32, Rc<List>),
-    Nil,
+  Cons(i32, Box<List>), // 必須使用 Box，否則編譯器無法確定大小
+  Nil,
 }
 
 fn main() {
-    use List::{Cons, Nil};
-
-    let a = Rc::new(Cons(5, Rc::new(Cons(10, Rc::new(Nil)))));
-    println!("a 的引用計數: {}", Rc::strong_count(&a));
-
-    let b = Cons(3, Rc::clone(&a));
-    println!("創建 b 後 a 的引用計數: {}", Rc::strong_count(&a));
-
-    {
-        let c = Cons(4, Rc::clone(&a));
-        println!("創建 c 後 a 的引用計數: {}", Rc::strong_count(&a));
-    }
-    
-    println!("c 離開作用域後 a 的引用計數: {}", Rc::strong_count(&a));
+  use List::{Cons, Nil};
+  
+  let list = Cons(1, 
+      Box::new(Cons(2, 
+          Box::new(Cons(3, 
+              Box::new(Nil))))));
+  
+  println!("{:?}", list);
 }
 ```
 
-### 實際應用 - 圖結構
+**3. Trait 物件**
+```rust
+trait Animal {
+  fn make_sound(&self);
+}
+
+struct Dog;
+struct Cat;
+
+impl Animal for Dog {
+  fn make_sound(&self) {
+      println!("汪汪！");
+  }
+}
+
+impl Animal for Cat {
+  fn make_sound(&self) {
+      println!("喵喵！");
+  }
+}
+
+fn main() {
+  // 將不同類型存儲在同一個集合中
+  let animals: Vec<Box<dyn Animal>> = vec![
+      Box::new(Dog),
+      Box::new(Cat),
+  ];
+  
+  for animal in animals {
+      animal.make_sound();
+  }
+}
+```
+
+## 2. `Rc<T>` - 引用計數（單執行緒）
+
+### 基本概念
+
+`Rc<T>`（Reference Counted）允許一個值有多個所有者。當最後一個所有者被丟棄時，值才會被清理。
 
 ```rust
 use std::rc::Rc;
 
+fn main() {
+  let data = Rc::new(String::from("共享資料"));
+  
+  let owner1 = Rc::clone(&data); // 增加引用計數
+  let owner2 = Rc::clone(&data); // 再次增加引用計數
+  
+  println!("資料: {}", data);
+  println!("owner1: {}", owner1);
+  println!("owner2: {}", owner2);
+  println!("引用計數: {}", Rc::strong_count(&data)); // 輸出: 3
+}
+```
+
+### 實際應用
+
+**共享配置物件**
+```rust
+use std::rc::Rc;
+
 #[derive(Debug)]
-struct Node {
-    id: i32,
-    children: Vec<Rc<Node>>,
+struct Config {
+  database_url: String,
+  timeout: u32,
 }
 
-impl Node {
-    fn new(id: i32) -> Rc<Self> {
-        Rc::new(Node {
-            id,
-            children: Vec::new(),
-        })
-    }
+struct Service {
+  name: String,
+  config: Rc<Config>,
+}
 
-    fn add_child(mut self: Rc<Self>, child: Rc<Node>) -> Rc<Self> {
-        if let Some(node) = Rc::get_mut(&mut self) {
-            node.children.push(child);
-        }
-        self
-    }
+impl Service {
+  fn new(name: &str, config: Rc<Config>) -> Self {
+      Service {
+          name: name.to_string(),
+          config,
+      }
+  }
+  
+  fn start(&self) {
+      println!("服務 {} 啟動，使用資料庫: {}", 
+               self.name, self.config.database_url);
+  }
 }
 
 fn main() {
-    let root = Node::new(1);
-    let child1 = Node::new(2);
-    let child2 = Node::new(3);
-    
-    // 共享子節點
-    let shared_child = Node::new(4);
-    
-    println!("shared_child 引用計數: {}", Rc::strong_count(&shared_child));
-    
-    let root = root.add_child(child1);
-    let root = root.add_child(child2);
-    let root = root.add_child(Rc::clone(&shared_child));
-    
-    println!("shared_child 引用計數: {}", Rc::strong_count(&shared_child));
+  let config = Rc::new(Config {
+      database_url: "postgresql://localhost/mydb".to_string(),
+      timeout: 30,
+  });
+  
+  let service1 = Service::new("用戶服務", Rc::clone(&config));
+  let service2 = Service::new("訂單服務", Rc::clone(&config));
+  
+  service1.start();
+  service2.start();
+  
+  println!("配置引用計數: {}", Rc::strong_count(&config));
 }
 ```
 
@@ -303,70 +177,57 @@ use std::cell::RefCell;
 
 #[derive(Debug)]
 struct Node {
-    value: i32,
-    parent: RefCell<Weak<Node>>,
-    children: RefCell<Vec<Rc<Node>>>,
+  value: i32,
+  children: RefCell<Vec<Rc<Node>>>,
+  parent: RefCell<Weak<Node>>, // 使用 Weak 避免循環引用
 }
 
 fn main() {
-    let leaf = Rc::new(Node {
-        value: 3,
-        parent: RefCell::new(Weak::new()),
-        children: RefCell::new(vec![]),
-    });
-
-    println!("leaf 強引用計數: {}", Rc::strong_count(&leaf));
-    println!("leaf 弱引用計數: {}", Rc::weak_count(&leaf));
-
-    {
-        let branch = Rc::new(Node {
-            value: 5,
-            parent: RefCell::new(Weak::new()),
-            children: RefCell::new(vec![Rc::clone(&leaf)]),
-        });
-
-        *leaf.parent.borrow_mut() = Rc::downgrade(&branch);
-
-        println!("branch 強引用計數: {}", Rc::strong_count(&branch));
-        println!("leaf 強引用計數: {}", Rc::strong_count(&leaf));
-    }
-
-    println!("leaf 父節點 = {:?}", leaf.parent.borrow().upgrade());
+  let parent = Rc::new(Node {
+      value: 1,
+      children: RefCell::new(vec![]),
+      parent: RefCell::new(Weak::new()),
+  });
+  
+  let child = Rc::new(Node {
+      value: 2,
+      children: RefCell::new(vec![]),
+      parent: RefCell::new(Rc::downgrade(&parent)), // 創建弱引用
+  });
+  
+  parent.children.borrow_mut().push(Rc::clone(&child));
+  
+  println!("父節點: {:?}", parent.value);
+  println!("子節點: {:?}", child.value);
 }
 ```
 
-## 5. `RefCell<T>` - 內部可變性
+## 3. `RefCell<T>` - 內部可變性
 
-### 核心概念
+### 基本概念
 
-- 在不可變引用下修改資料（內部可變性）
-- 將借用檢查從編譯時移到執行時
-- 違反借用規則會導致 panic
-
-### 基本語法
+`RefCell<T>` 允許在擁有不可變引用的情況下修改資料，將借用檢查從編譯時移到執行時。
 
 ```rust
 use std::cell::RefCell;
 
 fn main() {
-    let data = RefCell::new(vec![1, 2, 3]);
-
-    // 不可變借用
-    {
-        let borrowed = data.borrow();
-        println!("Data: {:?}", *borrowed);
-    } // borrowed 在此離開作用域
-
-    // 可變借用
-    {
-        let mut borrowed_mut = data.borrow_mut();
-        borrowed_mut.push(4);
-        println!("Modified data: {:?}", *borrowed_mut);
-    }
-
-    // 同時借用會 panic
-    // let r1 = data.borrow();
-    // let r2 = data.borrow_mut(); // panic!
+  let data = RefCell::new(vec![1, 2, 3]);
+  
+  // 不可變借用
+  {
+      let borrowed = data.borrow();
+      println!("資料: {:?}", *borrowed);
+  } // borrowed 在此離開作用域
+  
+  // 可變借用
+  {
+      let mut borrowed_mut = data.borrow_mut();
+      borrowed_mut.push(4);
+      println!("修改後: {:?}", *borrowed_mut);
+  }
+  
+  println!("最終資料: {:?}", *data.borrow());
 }
 ```
 
@@ -378,223 +239,284 @@ use std::cell::RefCell;
 
 #[derive(Debug)]
 struct Counter {
-    value: Rc<RefCell<i32>>,
+  value: Rc<RefCell<i32>>,
 }
 
 impl Counter {
-    fn new(initial: i32) -> Self {
-        Counter {
-            value: Rc::new(RefCell::new(initial)),
-        }
-    }
-
-    fn increment(&self) {
-        *self.value.borrow_mut() += 1;
-    }
-
-    fn get_value(&self) -> i32 {
-        *self.value.borrow()
-    }
-
-    fn clone_counter(&self) -> Self {
-        Counter {
-            value: Rc::clone(&self.value),
-        }
-    }
+  fn new(initial: i32) -> Self {
+      Counter {
+          value: Rc::new(RefCell::new(initial)),
+      }
+  }
+  
+  fn increment(&self) {
+      *self.value.borrow_mut() += 1;
+  }
+  
+  fn get(&self) -> i32 {
+      *self.value.borrow()
+  }
+  
+  fn share(&self) -> Self {
+      Counter {
+          value: Rc::clone(&self.value),
+      }
+  }
 }
 
 fn main() {
-    let counter1 = Counter::new(0);
-    let counter2 = counter1.clone_counter();
-
-    counter1.increment();
-    counter2.increment();
-
-    println!("Counter1 value: {}", counter1.get_value()); // 2
-    println!("Counter2 value: {}", counter2.get_value()); // 2
-    println!("引用計數: {}", Rc::strong_count(&counter1.value));
+  let counter1 = Counter::new(0);
+  let counter2 = counter1.share(); // 共享同一個計數器
+  
+  counter1.increment();
+  counter2.increment();
+  
+  println!("counter1: {}", counter1.get()); // 2
+  println!("counter2: {}", counter2.get()); // 2
 }
 ```
 
-### Mock 物件模式
+### 實際應用 - Mock 物件
 
 ```rust
 use std::cell::RefCell;
 
-trait Messenger {
-    fn send(&self, msg: &str);
+trait Logger {
+  fn log(&self, message: &str);
 }
 
-struct MockMessenger {
-    sent_messages: RefCell<Vec<String>>,
+// 真實的日誌記錄器
+struct FileLogger;
+
+impl Logger for FileLogger {
+  fn log(&self, message: &str) {
+      println!("寫入檔案: {}", message);
+  }
 }
 
-impl MockMessenger {
-    fn new() -> MockMessenger {
-        MockMessenger {
-            sent_messages: RefCell::new(vec![]),
-        }
-    }
+// 測試用的 Mock 物件
+struct MockLogger {
+  messages: RefCell<Vec<String>>,
 }
 
-impl Messenger for MockMessenger {
-    fn send(&self, message: &str) {
-        // 在不可變 self 下修改內部狀態
-        self.sent_messages.borrow_mut().push(String::from(message));
-    }
+impl MockLogger {
+  fn new() -> Self {
+      MockLogger {
+          messages: RefCell::new(vec![]),
+      }
+  }
+  
+  fn get_messages(&self) -> Vec<String> {
+      self.messages.borrow().clone()
+  }
 }
 
-fn main() {
-    let mock_messenger = MockMessenger::new();
-    mock_messenger.send("Hello");
-    mock_messenger.send("World");
-
-    println!("Messages sent: {:?}", mock_messenger.sent_messages.borrow());
-}
-```
-
-## 6. 智慧指標組合模式
-
-### 常見組合
-
-```rust
-use std::rc::Rc;
-use std::cell::RefCell;
-
-// 1. Rc<RefCell<T>> - 多所有權 + 內部可變性
-type SharedMutable<T> = Rc<RefCell<T>>;
-
-// 2. Box<dyn Trait> - 堆分配 + Trait 物件
-trait Animal {
-    fn make_sound(&self);
-}
-
-struct Dog;
-impl Animal for Dog {
-    fn make_sound(&self) {
-        println!("Woof!");
-    }
+impl Logger for MockLogger {
+  fn log(&self, message: &str) {
+      // 在不可變 self 下修改內部狀態
+      self.messages.borrow_mut().push(message.to_string());
+  }
 }
 
 fn main() {
-    // 多所有權的可變資料
-    let shared_data: SharedMutable<Vec<i32>> = Rc::new(RefCell::new(vec![1, 2, 3]));
-    let data_ref1 = Rc::clone(&shared_data);
-    let data_ref2 = Rc::clone(&shared_data);
-
-    data_ref1.borrow_mut().push(4);
-    data_ref2.borrow_mut().push(5);
-
-    println!("Shared data: {:?}", shared_data.borrow());
-
-    // Trait 物件集合
-    let animals: Vec<Box<dyn Animal>> = vec![
-        Box::new(Dog),
-    ];
-
-    for animal in animals {
-        animal.make_sound();
-    }
+  let mock = MockLogger::new();
+  
+  mock.log("第一條訊息");
+  mock.log("第二條訊息");
+  
+  println!("記錄的訊息: {:?}", mock.get_messages());
 }
 ```
 
-## 7. 效能考量
+## 4. `Deref` Trait - 自訂解引用行為
 
-### 成本比較
+### 基本概念
+
+`Deref` trait 允許自訂 `*` 運算子的行為，讓智慧指標能像普通引用一樣使用。
 
 ```rust
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::time::Instant;
+use std::ops::Deref;
 
-fn benchmark_smart_pointers() {
-    let n = 1_000_000;
+struct MyBox<T>(T);
 
-    // Box<T> - 最低開銷
-    let start = Instant::now();
-    let mut boxes = Vec::new();
-    for i in 0..n {
-        boxes.push(Box::new(i));
-    }
-    println!("Box<T> 時間: {:?}", start.elapsed());
+impl<T> MyBox<T> {
+  fn new(x: T) -> MyBox<T> {
+      MyBox(x)
+  }
+}
 
-    // Rc<T> - 引用計數開銷
-    let start = Instant::now();
-    let mut rcs = Vec::new();
-    for i in 0..n {
-        rcs.push(Rc::new(i));
-    }
-    println!("Rc<T> 時間: {:?}", start.elapsed());
+impl<T> Deref for MyBox<T> {
+  type Target = T;
+  
+  fn deref(&self) -> &Self::Target {
+      &self.0
+  }
+}
 
-    // RefCell<T> - 執行時檢查開銷
-    let start = Instant::now();
-    let mut refcells = Vec::new();
-    for i in 0..n {
-        refcells.push(RefCell::new(i));
-    }
-    println!("RefCell<T> 時間: {:?}", start.elapsed());
+fn main() {
+  let x = 5;
+  let y = MyBox::new(x);
+  
+  assert_eq!(5, x);
+  assert_eq!(5, *y); // 使用自訂的解引用
+  
+  println!("MyBox 中的值: {}", *y);
 }
 ```
 
-## 8. 練習題
+### Deref 強制轉換
+
+```rust
+use std::ops::Deref;
+
+struct MyString {
+  data: String,
+}
+
+impl MyString {
+  fn new(s: &str) -> Self {
+      MyString {
+          data: s.to_string(),
+      }
+  }
+}
+
+impl Deref for MyString {
+  type Target = String;
+  
+  fn deref(&self) -> &Self::Target {
+      &self.data
+  }
+}
+
+fn print_string(s: &str) {
+  println!("字串: {}", s);
+}
+
+fn main() {
+  let my_string = MyString::new("Hello, Rust!");
+  
+  // Deref 強制轉換：&MyString -> &String -> &str
+  print_string(&my_string);
+  
+  // 也可以使用 String 的方法
+  println!("長度: {}", my_string.len());
+  println!("大寫: {}", my_string.to_uppercase());
+}
+```
+
+## 5. `Drop` Trait - 自動清理
+
+### 基本概念
+
+`Drop` trait 定義了值離開作用域時的清理行為，類似於其他語言中的解構函數。
+
+```rust
+struct Resource {
+  name: String,
+}
+
+impl Resource {
+  fn new(name: &str) -> Self {
+      println!("獲取資源: {}", name);
+      Resource {
+          name: name.to_string(),
+      }
+  }
+}
+
+impl Drop for Resource {
+  fn drop(&mut self) {
+      println!("釋放資源: {}", self.name);
+  }
+}
+
+fn main() {
+  let _resource1 = Resource::new("資料庫連線");
+  
+  {
+      let _resource2 = Resource::new("檔案控制代碼");
+      // resource2 在此處自動釋放
+  }
+  
+  println!("主函數繼續執行");
+  // resource1 在 main 結束時釋放
+}
+```
+
+### 手動釋放
+
+```rust
+fn main() {
+  let resource = Resource::new("重要資源");
+  
+  // 使用 std::mem::drop 提前釋放
+  std::mem::drop(resource);
+  
+  println!("資源已提前釋放");
+}
+```
+
+## 6. 智慧指標選擇指南
+
+| 需求 | 使用的智慧指標 | 說明 |
+|------|---------------|------|
+| 堆上分配資料 | `Box<T>` | 單一所有權，最簡單 |
+| 多個所有者共享資料 | `Rc<T>` | 引用計數，單執行緒 |
+| 在不可變引用下修改 | `RefCell<T>` | 內部可變性，執行時檢查 |
+| 多所有權+可變性 | `Rc<RefCell<T>>` | 常見組合模式 |
+| 遞迴資料結構 | `Box<T>` 或 `Rc<T>` | 根據是否需要共享 |
+| Trait 物件 | `Box<dyn Trait>` | 動態分派 |
+
+## 7. 練習題
 
 ### 基礎練習
 
-1. **二元樹實作**：
-   ```rust
-   enum BinaryTree {
-       Node(i32, Box<BinaryTree>, Box<BinaryTree>),
-       Leaf,
-   }
-   
-   // 實作 insert 和 search 方法
-   ```
+**練習 1：二元樹**
+實作一個簡單的二元搜尋樹，支援插入和搜尋功能。使用 `Box<T>` 來處理遞迴結構。
 
-2. **自訂智慧指標**：
-   ```rust
-   struct MySmartPointer<T> {
-       data: T,
-   }
-   
-   // 實作 Deref 和 Drop trait
-   ```
+**提示：**
+- 定義一個 `BinaryTree` enum，包含 `Node` 和 `Empty` 變體
+- `Node` 應該包含值和左右子樹
+- 實作 `insert` 和 `contains` 方法
 
-3. **共享計數器**：
-   ```rust
-   // 使用 Rc<RefCell<i32>> 實作多所有權計數器
-   ```
+**練習 2：共享計數器**
+使用 `Rc<RefCell<T>>` 實作一個可以被多個物件共享的計數器。
 
-### 進階練習
+**要求：**
+- 多個計數器實例共享同一個內部值
+- 支援增加、減少和獲取當前值
+- 任一實例的修改都會影響其他實例
 
-4. **圖結構**：實作一個有向圖，節點可以有多個父節點和子節點
-5. **觀察者模式**：使用智慧指標實作觀察者模式
-6. **記憶體池**：實作一個簡單的物件池模式
+**練習 3：自訂智慧指標**
+實作一個具有存取計數功能的智慧指標，每次解引用時記錄存取次數。
 
-## 總結
+**要求：**
+- 實作 `Deref` trait
+- 使用 `RefCell` 來存儲存取計數
+- 提供方法獲取總存取次數
 
-### 選擇指南
+## 8. 總結
 
-| 需求 | 智慧指標 | 使用場景 |
-|------|----------|----------|
-| 堆分配 | `Box<T>` | 大型資料、遞迴型別 |
-| 多所有權 | `Rc<T>` | 共享唯讀資料 |
-| 內部可變性 | `RefCell<T>` | 在不可變引用下修改 |
-| 多所有權+可變 | `Rc<RefCell<T>>` | 共享可變資料 |
-| Trait 物件 | `Box<dyn Trait>` | 動態分派 |
+### 核心要點
 
-### 關鍵概念
+1. **`Box<T>`**：最簡單的智慧指標，用於堆分配
+2. **`Rc<T>`**：允許多個所有者，使用引用計數
+3. **`RefCell<T>`**：提供內部可變性，執行時借用檢查
+4. **`Deref`**：讓智慧指標像普通引用一樣使用
+5. **`Drop`**：自動清理資源，確保記憶體安全
 
-- **所有權管理**：智慧指標擴展了 Rust 的所有權系統
-- **記憶體安全**：在編譯時或執行時確保記憶體安全
-- **零成本抽象**：大部分智慧指標沒有執行時開銷
-- **組合使用**：不同智慧指標可以組合使用
+### 選擇建議
 
-### 最佳實踐
+- **需要堆分配**：使用 `Box<T>`
+- **需要多個所有者**：使用 `Rc<T>`
+- **需要在不可變引用下修改**：使用 `RefCell<T>`
+- **需要多所有權且可變**：使用 `Rc<RefCell<T>>`
 
-- 優先使用 `Box<T>` 進行簡單的堆分配
-- 只在需要多所有權時使用 `Rc<T>`
-- 謹慎使用 `RefCell<T>`，注意執行時 panic 風險
-- 避免循環引用，必要時使用 `Weak<T>`
-- 在多執行緒環境中使用 `Arc<T>` 和 `Mutex<T>`
+### 注意事項
 
-掌握這些智慧指標將幫助你構建更複雜、更安全的 Rust 應用程式。
+- `RefCell<T>` 的借用檢查在執行時進行，違反規則會導致 panic
+- 注意循環引用問題，必要時使用 `Weak<T>`
+- 智慧指標有少量的執行時開銷，但換來了記憶體安全
+
+掌握這些智慧指標將幫助你更好地理解和使用 Rust 的所有權系統，寫出安全且高效的程式碼。
