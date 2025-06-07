@@ -140,17 +140,3 @@ impl<T: Display + PartialOrd> Pair<T> {
 3. **特徵約束**
    - 實現一個泛型函式 `print_summary<T: Summary>`，接受一個實現了 `Summary` 特徵的類型
    - 為自定義類型實現 `Summary` 特徵
-
-4. **生命週期註解**
-   - 實現一個函式 `longest_with_announcement`，返回兩個字串切片中較長的一個
-   - 添加一個泛型參數 `T`，用於接受並顯示一個額外的公告訊息
-
-5. **進階練習**
-   - 實現一個泛型快取結構體 `Cache<T>`，可以緩存任意類型的值
-   - 使用 `HashMap` 存儲緩存項
-   - 實現方法：
-     - `new()`: 創建新緩存
-     - `get(&self, key: &K) -> Option<&V>`: 獲取緩存值
-     - `insert(&mut self, key: K, value: V)`: 插入新值
-     - `remove(&mut self, key: &K) -> Option<V>`: 移除並返回緩存值
-}
